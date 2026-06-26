@@ -19,23 +19,13 @@ export class UserService {
 
   async signup(body: SignUpDto) {
     try {
-      const { name, email, password, DOB, phone, address, gender, role } = body;
+      const { email } = body;
       const userExist = await this.UserRepository.findOne({ email });
       if (userExist) {
         throw new ConflictException('user already exist');
       }
 
-      const user = await this.UserRepository.create({
-        name,
-        email,
-        password,
-        DOB,
-        phone,
-        address,
-        gender,
-        role,
-        confirmed: true,
-      });
+      const user = await this.UserRepository.create(this.createUserData(body));
       return {
         success: true,
         message: 'Account created successfully! Welcome aboard!',
@@ -59,14 +49,8 @@ export class UserService {
       if (!CompareHash(password, user.password)) {
         throw new BadRequestException('Invalid password. Please try again');
       }
-      const access_token = this.TokenService.generateToken(
-        { email, id: user['id'] },
-        { secret: process.env.JWT_SECRET, expiresIn: '1w' },
-      );
-      const refresh_token = this.TokenService.generateToken(
-        { email, id: user['id'] },
-        { secret: process.env.JWT_SECRET, expiresIn: '1y' },
-      );
+      const access_token = this.createAuthToken(email, user['id'], '1w');
+      const refresh_token = this.createAuthToken(email, user['id'], '1y');
 
       return {
         success: true,
@@ -77,5 +61,28 @@ export class UserService {
     } catch (error) {
       throw new InternalServerErrorException(error);
     }
+  }
+
+  private createUserData(body: SignUpDto) {
+    const { name, email, password, DOB, phone, address, gender, role } = body;
+
+    return {
+      name,
+      email,
+      password,
+      DOB,
+      phone,
+      address,
+      gender,
+      role,
+      confirmed: true,
+    };
+  }
+
+  private createAuthToken(email: string, id: string, expiresIn: string): string {
+    return this.TokenService.generateToken(
+      { email, id },
+      { secret: process.env.JWT_SECRET, expiresIn },
+    );
   }
 }

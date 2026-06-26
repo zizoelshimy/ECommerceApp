@@ -5,8 +5,11 @@ import { CategoryRepository } from 'src/DB/Repository';
 import { LocalFileUploadService } from 'src/common/service/localFileUpload.service';
 import { Types } from 'mongoose';
 import { generateSlug } from 'src/common/utils/slug';
+
 @Injectable()
 export class CategoryService {
+  private readonly uploadRoot = 'category';
+
   constructor(
     private readonly _categoryRepository: CategoryRepository,
     private readonly _fileUploadService: LocalFileUploadService,
@@ -24,20 +27,20 @@ export class CategoryService {
     if (categoryExist) {
       throw new BadRequestException('Category already exists');
     }
-    let dummyData = {
+    const categoryData = {
       name,
       userId: user._id,
     };
-    const customId = Math.random().toString(36).substring(2, 7);
+    const customId = this.createCustomId();
     if (file) {
       const { url, path } = await this._fileUploadService.uploadFile(file, {
-        folder: `category/${customId}`,
+        folder: this.categoryFolder(customId),
       });
-      dummyData['image'] = { url, path };
-      dummyData['customId'] = customId;
+      categoryData['image'] = { url, path };
+      categoryData['customId'] = customId;
     }
 
-    const category = await this._categoryRepository.create(dummyData);
+    const category = await this._categoryRepository.create(categoryData);
     return {
       success: true,
       message: 'Category created successfully',
@@ -74,7 +77,7 @@ export class CategoryService {
     if (file) {
       await this._fileUploadService.deleteFile(category.image['path']);
       const { url, path } = await this._fileUploadService.uploadFile(file, {
-        folder: `category/${category.customId}`,
+        folder: this.categoryFolder(category.customId),
       });
       category.image = { url, path };
     }
@@ -103,9 +106,17 @@ export class CategoryService {
 
     if (category.image) {
       await this._fileUploadService.deleteFolder(
-        `category/${category.customId}`,
+        this.categoryFolder(category.customId),
       );
     }
     return { message: 'Category deleted successfully', success: true };
+  }
+
+  private createCustomId(): string {
+    return Math.random().toString(36).substring(2, 7);
+  }
+
+  private categoryFolder(customId: string): string {
+    return `${this.uploadRoot}/${customId}`;
   }
 }

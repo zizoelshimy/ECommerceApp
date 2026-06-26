@@ -1,7 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateCartDto } from './dto/cart.dto';
-import { UserDocument } from 'src/DB/models';
+import { ProductDocument, UserDocument } from 'src/DB/models';
 import { CartRepository, ProductRepository } from 'src/DB/Repository';
+import { Types } from 'mongoose';
+
+type CartProduct = {
+  productId: Types.ObjectId;
+  quantity: number;
+  finalPrice: number;
+};
 
 @Injectable()
 export class CartService {
@@ -13,50 +20,32 @@ export class CartService {
   async createCart(body: CreateCartDto, user: UserDocument) {
     const { productId, quantity } = body;
 
-    const product = await this.productRepository.findOne({
-      _id: productId,
-      stock: { $gte: quantity },
-    });
-    if (!product) {
-      throw new BadRequestException('Product not found or out of stock');
-    }
+    const product = await this.getAvailableProduct(productId, quantity);
 
     const cart = await this.cartRepository.findOne({ userId: user._id });
     if (!cart) {
       const newCart = await this.cartRepository.create({
         userId: user._id,
-        products: [
-          {
-            productId: product._id,
-            quantity,
-            finalPrice: product.subPrice,
-          },
-        ],
+        products: [this.createCartProduct(product, quantity)],
       });
-      return {
-        success: true,
-        message: 'Product added to your cart successfully',
-        cart: newCart,
-      };
+      return this.cartResponse(
+        'Product added to your cart successfully',
+        newCart,
+      );
     }
-    const productExist = cart.products.find((p) => {
-      return p.productId.toString() == productId.toString();
-    });
+    const productExist = cart.products.find((p) =>
+      this.isSameProduct(p.productId, productId),
+    );
     if (productExist) {
       throw new BadRequestException('Product already exists in cart');
     }
 
-    cart.products.push({
-      productId: product._id,
-      quantity,
-      finalPrice: product.subPrice,
-    });
+    cart.products.push(this.createCartProduct(product, quantity));
     const updatedCart = await cart.save();
-    return {
-      success: true,
-      message: 'Product added to your cart successfully',
-      cart: updatedCart,
-    };
+    return this.cartResponse(
+      'Product added to your cart successfully',
+      updatedCart,
+    );
   }
 
   async removeFromCart(productId: string, user: UserDocument) {
@@ -68,27 +57,20 @@ export class CartService {
       throw new BadRequestException('Product not found in cart');
     }
 
-    cart.products = cart.products.filter((p) => {
-      return p.productId.toString() !== productId.toString();
-    });
+    cart.products = cart.products.filter(
+      (p) => !this.isSameProduct(p.productId, productId),
+    );
     const updatedCart = await cart.save();
-    return {
-      success: true,
-      message: 'Product removed from your cart successfully',
-      cart: updatedCart,
-    };
+    return this.cartResponse(
+      'Product removed from your cart successfully',
+      updatedCart,
+    );
   }
 
   async updateQuantity(body: CreateCartDto, user: UserDocument) {
     const { productId, quantity } = body;
 
-    const productExist = await this.productRepository.findOne({
-      _id: productId,
-      stock: { $gte: quantity },
-    });
-    if (!productExist) {
-      throw new BadRequestException('Product not found or out of stock');
-    }
+    await this.getAvailableProduct(productId, quantity);
 
     const cart = await this.cartRepository.findOne({
       userId: user._id,
@@ -98,18 +80,47 @@ export class CartService {
       throw new BadRequestException('Product not found in cart');
     }
 
-    const product = cart.products.find((p) => {
-      return p.productId.toString() == productId.toString();
-    });
+    const product = cart.products.find((p) =>
+      this.isSameProduct(p.productId, productId),
+    );
     if (!product) {
       throw new BadRequestException('Product not found in cart');
     }
     product.quantity = quantity;
     const updatedCart = await cart.save();
+    return this.cartResponse('Cart quantity updated successfully', updatedCart);
+  }
+
+  private async getAvailableProduct(productId: string, quantity: number) {
+    const product = await this.productRepository.findOne({
+      _id: productId,
+      stock: { $gte: quantity },
+    });
+    if (!product) {
+      throw new BadRequestException('Product not found or out of stock');
+    }
+    return product;
+  }
+
+  private createCartProduct(
+    product: ProductDocument,
+    quantity: number,
+  ): CartProduct {
     return {
-      success: true,
-      message: 'Cart quantity updated successfully',
-      cart: updatedCart,
+      productId: product._id,
+      quantity,
+      finalPrice: product.subPrice,
     };
+  }
+
+  private isSameProduct(
+    cartProductId: Types.ObjectId,
+    productId: string,
+  ): boolean {
+    return cartProductId.toString() == productId.toString();
+  }
+
+  private cartResponse(message: string, cart: unknown) {
+    return { success: true, message, cart };
   }
 }

@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ReviewRepository } from 'src/DB/Repository/review.repository';
 import { ProductRepository } from 'src/DB/Repository';
 import { CreateReviewDto, UpdateReviewDto } from './dto/review.dto';
-import { UserDocument } from 'src/DB/models';
+import { ReviewDocument, UserDocument } from 'src/DB/models';
 import { Types } from 'mongoose';
 
 @Injectable()
@@ -95,7 +95,7 @@ export class ReviewService {
   }
 
   private async updateProductRating(productId: Types.ObjectId) {
-    const reviews: any[] = await this._reviewRepository.find({
+    const reviews = await this._reviewRepository.find({
       filter: { productId },
     });
 
@@ -107,18 +107,26 @@ export class ReviewService {
       return;
     }
 
-    const totalRating = reviews.reduce(
-      (sum: number, review: any) => sum + review.rating,
-      0,
-    );
-    const avgRating = totalRating / reviews.length;
+    const avgRating = this.getAverageRating(reviews);
 
     await this._productRepository.findOneAndUpdate(
       { _id: productId },
       {
-        rateAvg: Math.round(avgRating * 10) / 10,
+        rateAvg: this.roundRating(avgRating),
         rateNum: reviews.length,
       },
     );
+  }
+
+  private getAverageRating(reviews: ReviewDocument[]): number {
+    const totalRating = reviews.reduce(
+      (sum, review) => sum + review.rating,
+      0,
+    );
+    return totalRating / reviews.length;
+  }
+
+  private roundRating(rating: number): number {
+    return Math.round(rating * 10) / 10;
   }
 }

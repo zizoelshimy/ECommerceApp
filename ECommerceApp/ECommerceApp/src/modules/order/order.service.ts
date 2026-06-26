@@ -8,6 +8,8 @@ import { PaymentService } from './service/payment';
 
 @Injectable()
 export class OrderService {
+  private readonly estimatedDeliveryDays = 3;
+
   constructor(
     private readonly _orderRepository: OrderRepository,
     private readonly _cartRepository: CartRepository,
@@ -28,11 +30,8 @@ export class OrderService {
       phone,
       address,
       paymentMethod,
-      status:
-        paymentMethod == PaymentMethodTypes.cash
-          ? OrderStatusTypes.confirmed
-          : OrderStatusTypes.pending,
-      estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      status: this.getInitialOrderStatus(paymentMethod),
+      estimatedDelivery: this.getEstimatedDeliveryDate(),
     });
 
     return { success: true, message: 'Order placed successfully', order };
@@ -50,17 +49,9 @@ export class OrderService {
     const session = await this.PaymentService.createSession({
       customer_email: user.email,
       metadata: { orderId: order._id.toString() },
-      line_items: order.cartId['products'].map((product) => ({
-        price_data: {
-          currency: 'egp',
-          product_data: {
-            name: product.productId.name,
-            images: [product.productId.mainImage.secure_url],
-          },
-          unit_amount: product.productId.subPrice * 100,
-        },
-        quantity: product.quantity,
-      })),
+      line_items: order.cartId['products'].map((product) =>
+        this.createStripeLineItem(product),
+      ),
       discounts: [],
     });
 
@@ -102,5 +93,31 @@ export class OrderService {
       filter: {},
       populate: [{ path: 'cartId' }],
     });
+  }
+
+  private getInitialOrderStatus(paymentMethod: string) {
+    return paymentMethod == PaymentMethodTypes.cash
+      ? OrderStatusTypes.confirmed
+      : OrderStatusTypes.pending;
+  }
+
+  private getEstimatedDeliveryDate(): Date {
+    return new Date(
+      Date.now() + this.estimatedDeliveryDays * 24 * 60 * 60 * 1000,
+    );
+  }
+
+  private createStripeLineItem(product: any) {
+    return {
+      price_data: {
+        currency: 'egp',
+        product_data: {
+          name: product.productId.name,
+          images: [product.productId.mainImage.secure_url],
+        },
+        unit_amount: product.productId.subPrice * 100,
+      },
+      quantity: product.quantity,
+    };
   }
 }

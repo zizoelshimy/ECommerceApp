@@ -13,6 +13,8 @@ import { generateSlug } from 'src/common/utils/slug';
 
 @Injectable()
 export class ProductService {
+  private readonly uploadRoot = 'product';
+
   constructor(
     private readonly _productRepository: ProductRepository,
     private readonly _fileUploadService: LocalFileUploadService,
@@ -49,23 +51,15 @@ export class ProductService {
     if (!files.mainImage) {
       throw new BadRequestException('Main image is required');
     }
-    const customId = Math.random().toString(36).substring(2, 7);
+    const customId = this.createCustomId();
 
-    const { url, path } = await this._fileUploadService.uploadFile(
+    const { url, path } = await this.uploadMainImage(
+      customId,
       files.mainImage[0],
-      { folder: `product/${customId}/mainImage` },
     );
+    const subImages = await this.uploadSubImages(customId, files.subImages);
 
-    let subImages: { url: string; path: string }[] = [];
-    if (files.subImages) {
-      const results = await this._fileUploadService.uploadMultipleFiles(
-        files.subImages,
-        { folder: `product/${customId}/subImages` },
-      );
-      subImages.push(...results);
-    }
-
-    const subPrice = price - price * ((discount || 0) / 100);
+    const subPrice = this.calculateSubPrice(price, discount || 0);
 
     const product = await this._productRepository.create({
       name,
@@ -137,33 +131,32 @@ export class ProductService {
 
     if (files.mainImage) {
       await this._fileUploadService.deleteFile(product.mainImage['path']);
-      const { url, path } = await this._fileUploadService.uploadFile(
+      const { url, path } = await this.uploadMainImage(
+        product.customId,
         files.mainImage[0],
-        { folder: `product/${product.customId}/mainImage` },
       );
       product.mainImage = { url, path };
     }
 
     if (files.subImages) {
       await this._fileUploadService.deleteFolder(
-        `product/${product.customId}/subImages`,
+        this.subImagesFolder(product.customId),
       );
-      const results = await this._fileUploadService.uploadMultipleFiles(
+      product.subImages = await this._fileUploadService.uploadMultipleFiles(
         files.subImages,
-        { folder: `product/${product.customId}/subImages` },
+        { folder: this.subImagesFolder(product.customId) },
       );
-      product.subImages = results;
     }
 
     if (price && discount) {
-      product.subPrice = price - price * (discount / 100);
+      product.subPrice = this.calculateSubPrice(price, discount);
       product.price = price;
       product.discount = discount;
     } else if (price) {
-      product.subPrice = price - price * (product.discount / 100);
+      product.subPrice = this.calculateSubPrice(price, product.discount);
       product.price = price;
     } else if (discount) {
-      product.subPrice = product.price - product.price * (discount / 100);
+      product.subPrice = this.calculateSubPrice(product.price, discount);
       product.discount = discount;
     }
 
@@ -184,16 +177,7 @@ export class ProductService {
   }
 
   async getProducts(query: QueryDto) {
-    let filterObj: FilterQuery<ProductDocument> = {};
-
-    if (query?.name) {
-      filterObj = {
-        $or: [
-          { name: { $regex: query.name, $options: 'i' } },
-          { slug: { $regex: query.name, $options: 'i' } },
-        ],
-      };
-    }
+    const filterObj = this.buildProductFilter(query);
 
     const products = await this._productRepository.find({
       filter: filterObj,
@@ -207,6 +191,54 @@ export class ProductService {
       success: true,
       message: 'Products fetched successfully',
       products,
+    };
+  }
+
+  private createCustomId(): string {
+    return Math.random().toString(36).substring(2, 7);
+  }
+
+  private calculateSubPrice(price: number, discount: number): number {
+    return price - price * (discount / 100);
+  }
+
+  private mainImageFolder(customId: string): string {
+    return `${this.uploadRoot}/${customId}/mainImage`;
+  }
+
+  private subImagesFolder(customId: string): string {
+    return `${this.uploadRoot}/${customId}/subImages`;
+  }
+
+  private uploadMainImage(customId: string, file: Express.Multer.File) {
+    return this._fileUploadService.uploadFile(file, {
+      folder: this.mainImageFolder(customId),
+    });
+  }
+
+  private async uploadSubImages(
+    customId: string,
+    files?: Express.Multer.File[],
+  ): Promise<{ url: string; path: string }[]> {
+    if (!files) {
+      return [];
+    }
+
+    return this._fileUploadService.uploadMultipleFiles(files, {
+      folder: this.subImagesFolder(customId),
+    });
+  }
+
+  private buildProductFilter(query: QueryDto): FilterQuery<ProductDocument> {
+    if (!query?.name) {
+      return {};
+    }
+
+    return {
+      $or: [
+        { name: { $regex: query.name, $options: 'i' } },
+        { slug: { $regex: query.name, $options: 'i' } },
+      ],
     };
   }
 }

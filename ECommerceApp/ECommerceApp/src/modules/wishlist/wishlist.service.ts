@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { WishlistRepository } from 'src/DB/Repository/wishlist.repository';
 import { ProductRepository } from 'src/DB/Repository';
 import { AddToWishlistDto } from './dto/wishlist.dto';
-import { UserDocument } from 'src/DB/models';
+import { UserDocument, WishlistDocument } from 'src/DB/models';
 import { Types } from 'mongoose';
 
 @Injectable()
@@ -20,9 +20,7 @@ export class WishlistService {
       throw new BadRequestException('Product not found');
     }
 
-    let wishlist = await this._wishlistRepository.findOne({
-      userId: user._id,
-    });
+    let wishlist = await this.findUserWishlist(user);
 
     if (!wishlist) {
       wishlist = await this._wishlistRepository.create({
@@ -30,11 +28,7 @@ export class WishlistService {
         products: [productId],
       });
     } else {
-      const productExists = wishlist.products.some(
-        (id) => id.toString() === productId.toString(),
-      );
-
-      if (productExists) {
+      if (this.hasProduct(wishlist, productId)) {
         throw new BadRequestException('Product already in wishlist');
       }
 
@@ -50,17 +44,13 @@ export class WishlistService {
   }
 
   async removeFromWishlist(user: UserDocument, productId: Types.ObjectId) {
-    const wishlist = await this._wishlistRepository.findOne({
-      userId: user._id,
-    });
+    const wishlist = await this.findUserWishlist(user);
 
     if (!wishlist) {
       throw new BadRequestException('Wishlist not found');
     }
 
-    const productIndex = wishlist.products.findIndex(
-      (id) => id.toString() === productId.toString(),
-    );
+    const productIndex = this.findProductIndex(wishlist, productId);
 
     if (productIndex === -1) {
       throw new BadRequestException('Product not in wishlist');
@@ -77,7 +67,7 @@ export class WishlistService {
   }
 
   async getWishlist(user: UserDocument) {
-    let wishlist = await this._wishlistRepository.findOne(
+    const wishlist = await this._wishlistRepository.findOne(
       { userId: user._id },
       [{ path: 'products' }],
     );
@@ -94,9 +84,7 @@ export class WishlistService {
   }
 
   async clearWishlist(user: UserDocument) {
-    const wishlist = await this._wishlistRepository.findOne({
-      userId: user._id,
-    });
+    const wishlist = await this.findUserWishlist(user);
 
     if (!wishlist) {
       throw new BadRequestException('Wishlist not found');
@@ -109,5 +97,32 @@ export class WishlistService {
       message: 'Your wishlist has been cleared successfully',
       success: true,
     };
+  }
+
+  private findUserWishlist(user: UserDocument) {
+    return this._wishlistRepository.findOne({ userId: user._id });
+  }
+
+  private hasProduct(
+    wishlist: WishlistDocument,
+    productId: Types.ObjectId,
+  ): boolean {
+    return this.findProductIndex(wishlist, productId) !== -1;
+  }
+
+  private findProductIndex(
+    wishlist: WishlistDocument,
+    productId: Types.ObjectId,
+  ): number {
+    return wishlist.products.findIndex((id) =>
+      this.isSameProduct(id, productId),
+    );
+  }
+
+  private isSameProduct(
+    currentProductId: Types.ObjectId,
+    targetProductId: Types.ObjectId,
+  ): boolean {
+    return currentProductId.toString() === targetProductId.toString();
   }
 }
