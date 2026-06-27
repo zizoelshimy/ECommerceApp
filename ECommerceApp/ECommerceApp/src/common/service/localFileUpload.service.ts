@@ -13,29 +13,23 @@ export interface UploadResult {
 
 @Injectable()
 export class LocalFileUploadService {
-  private uploadDir = path.join(process.cwd(), 'uploads');
+  private readonly defaultFolder = 'general';
+  private readonly uploadDir = path.join(process.cwd(), 'uploads');
 
   constructor() {
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
-    }
+    this.ensureDirectory(this.uploadDir);
   }
 
   async uploadFile(
     file: Express.Multer.File,
     options?: FileUploadOptions,
   ): Promise<UploadResult> {
-    const folder = options?.folder || 'general';
-    const folderPath = path.join(this.uploadDir, folder);
+    const folder = options?.folder || this.defaultFolder;
+    const folderPath = this.getUploadPath(folder);
 
-    if (!fs.existsSync(folderPath)) {
-      fs.mkdirSync(folderPath, { recursive: true });
-    }
+    this.ensureDirectory(folderPath);
 
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 7);
-    const ext = path.extname(file.originalname);
-    const filename = `${timestamp}-${randomStr}${ext}`;
+    const filename = this.createFileName(file.originalname);
     const filepath = path.join(folderPath, filename);
 
     fs.writeFileSync(filepath, file.buffer);
@@ -61,9 +55,27 @@ export class LocalFileUploadService {
   }
 
   async deleteFolder(folderPath: string): Promise<void> {
-    const fullPath = path.join(this.uploadDir, folderPath);
+    const fullPath = this.getUploadPath(folderPath);
     if (fs.existsSync(fullPath)) {
       fs.rmSync(fullPath, { recursive: true, force: true });
     }
+  }
+
+  private getUploadPath(folder: string): string {
+    return path.join(this.uploadDir, folder);
+  }
+
+  private ensureDirectory(directory: string): void {
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+  }
+
+  private createFileName(originalName: string): string {
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 7);
+    const ext = path.extname(originalName);
+
+    return `${timestamp}-${randomStr}${ext}`;
   }
 }

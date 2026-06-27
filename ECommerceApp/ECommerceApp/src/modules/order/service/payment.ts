@@ -3,9 +3,10 @@ import Stripe from 'stripe';
 
 @Injectable()
 export class PaymentService {
-  constructor() {}
+  private readonly successUrl = 'http://localhost:3000/order/success';
+  private readonly cancelUrl = 'http://localhost:3000/order/failure';
 
-  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+  private readonly stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
   async createSession({ customer_email, metadata, line_items, discounts }) {
     const session = await this.stripe.checkout.sessions.create({
@@ -13,8 +14,8 @@ export class PaymentService {
       mode: 'payment',
       customer_email,
       metadata,
-      success_url: 'http://localhost:3000/order/success',
-      cancel_url: 'http://localhost:3000/order/failure',
+      success_url: this.successUrl,
+      cancel_url: this.cancelUrl,
       line_items,
       discounts,
     });
@@ -23,7 +24,7 @@ export class PaymentService {
   }
 
   async refund(payment_intent, reason) {
-    return await this.stripe.refunds.create({
+    return this.stripe.refunds.create({
       payment_intent,
       reason,
     });

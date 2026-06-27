@@ -89,7 +89,7 @@ export class OrderService {
   }
 
   async getAllOrders() {
-    return await this._orderRepository.find({
+    return this._orderRepository.find({
       filter: {},
       populate: [{ path: 'cartId' }],
     });

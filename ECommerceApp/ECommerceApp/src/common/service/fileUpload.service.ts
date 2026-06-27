@@ -4,15 +4,14 @@ import { UploadApiOptions } from 'cloudinary';
 
 @Injectable()
 export class FileUploadService {
-  constructor() {}
-  private _cloudinary = cloudinaryConfig();
+  private readonly _cloudinary = cloudinaryConfig();
 
   async uploadFile(file: Express.Multer.File, options: UploadApiOptions) {
-    return await this._cloudinary.uploader.upload(file.path, options);
+    return this._cloudinary.uploader.upload(file.path, options);
   }
 
   async uploadFiles(files: Express.Multer.File[], options: UploadApiOptions) {
-    let results: { secure_url: string; public_id: string }[] = [];
+    const results: { secure_url: string; public_id: string }[] = [];
     for (const file of files) {
       const { secure_url, public_id } = await this.uploadFile(file, options);
       results.push({ secure_url, public_id });
@@ -21,7 +20,7 @@ export class FileUploadService {
   }
 
   async deleteFile(public_id: string) {
-    return await this._cloudinary.uploader.destroy(public_id);
+    return this._cloudinary.uploader.destroy(public_id);
   }
 
   async deleteFolder(filePath: string) {
